@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>LUDI</title>
+    <link rel="icon" href="img/ludi-logo.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&family=Playfair+Display:wght@700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="css/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <section id="view-lobby" class="view active">
+        <div class="lobby-grid">
+          <aside class="panel">
+            <div class="brand">
+              <div class="brand-lockup">
+                <img class="brand-logo" src="img/ludi-logo.svg" width="56" height="56" alt="" />
+                <h1>LUDI</h1>
+              </div>
+              <p>Jouez en ligne. Plus vous êtes nombreux, plus le plateau s’agrandit.</p>
+            </div>
+
+            <div class="online-box show" id="online-box">
+              <div class="field">
+                <label>Votre pseudo</label>
+                <input id="online-name" type="text" maxlength="18" placeholder="Ex. Amina" autocomplete="nickname" />
+              </div>
+
+              <button class="btn btn-primary btn-xl" id="btn-create" type="button">Créer une table</button>
+
+              <div class="divider"><span>ou rejoindre une table</span></div>
+
+              <div class="join-block">
+                <input id="join-code" type="text" maxlength="6" placeholder="CODE" spellcheck="false" />
+                <button class="btn btn-blue btn-xl" id="btn-join" type="button">Entrer</button>
+              </div>
+
+              <div id="room-info" class="room-card" hidden>
+                <p class="tiny room-kicker">Code de la table</p>
+                <div class="code" id="room-code"></div>
+                <p class="tiny" id="room-url"></p>
+                <button class="btn btn-ghost" id="btn-copy" type="button">Copier le lien</button>
+                <div class="players" id="online-players"></div>
+                <p class="hint" id="online-hint">En attente de joueurs… le plateau s’élargit à chaque entrée.</p>
+                <div class="chat-box">
+                  <div class="chat-head">Chat</div>
+                  <div class="chat-log" id="chat-log-lobby"></div>
+                  <form class="chat-form" id="chat-form-lobby">
+                    <input class="chat-input" id="chat-input-lobby" type="text" maxlength="160" placeholder="Écrire…" autocomplete="off" />
+                    <button class="btn btn-blue" type="submit">OK</button>
+                  </form>
+                </div>
+                <button class="btn btn-primary btn-xl" id="btn-start-online" type="button" hidden>
+                  Lancer la partie
+                </button>
+                <button class="btn btn-danger" id="btn-leave" type="button">Quitter la table</button>
+              </div>
+
+              <p class="status-pill" id="online-status">Connexion au salon…</p>
+            </div>
+          </aside>
+
+          <div class="table-wrap">
+            <canvas id="preview"></canvas>
+            <div class="grow-badge" id="grow-badge">Plateau classique · 4 joueurs</div>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-game" class="view">
+        <canvas id="board"></canvas>
+        <div class="hud">
+          <div class="hud-top">
+            <div class="hud-top-left">
+              <div class="hud-brand" aria-label="LUDI">
+                <img src="img/ludi-logo.svg" width="28" height="28" alt="" />
+                <span>LUDI</span>
+              </div>
+            <div class="turn-banner" id="turn-banner">
+              <span class="tiny">Tour en cours</span>
+              <strong id="turn-name">—</strong>
+              <span class="tiny" id="turn-help">Lancez le dé</span>
+            </div>
+            </div>
+            <div class="hud-actions">
+              <div class="roster" id="roster"></div>
+              <div class="row hud-btns">
+                <button class="btn btn-ghost" id="btn-rules" type="button">Règles</button>
+                <button class="btn btn-danger" id="btn-quit" type="button">Quitter</button>
+              </div>
+            </div>
+          </div>
+          <div class="hud-bottom">
+            <div class="hud-left">
+              <div class="log" id="log">La partie commence.</div>
+              <div class="chat-box chat-box-game">
+                <div class="chat-head">Chat</div>
+                <div class="chat-log" id="chat-log-game"></div>
+                <form class="chat-form" id="chat-form-game">
+                  <input class="chat-input" id="chat-input-game" type="text" maxlength="160" placeholder="Écrire…" autocomplete="off" />
+                  <button class="btn btn-blue" type="submit">OK</button>
+                </form>
+              </div>
+            </div>
+            <div class="dice-wrap">
+              <div class="dice">
+                <div class="cube" id="cube">
+                  <div class="face face-1"></div>
+                  <div class="face face-2"></div>
+                  <div class="face face-3"></div>
+                  <div class="face face-4"></div>
+                  <div class="face face-5"></div>
+                  <div class="face face-6"></div>
+                </div>
+              </div>
+              <button class="btn btn-primary btn-xl" id="btn-roll" type="button">Lancer le dé</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="overlay" id="overlay-win">
+      <div class="modal">
+        <h2>Victoire</h2>
+        <p id="win-text"></p>
+        <div class="podium" id="podium"></div>
+        <button class="btn btn-primary btn-xl" id="btn-again" type="button">Nouvelle table</button>
+      </div>
+    </div>
+
+    <div class="overlay" id="overlay-rules">
+      <div class="modal">
+        <h2>Règles</h2>
+        <p>
+          Un <strong>6</strong> sort un pion de la maison. Suivez le tour de piste, puis votre
+          couloir coloré jusqu’au triangle central. Il faut un compte exact pour arriver. Une
+          étoile est une case sûre. Atterrir sur un adversaire ailleurs le renvoie à sa base. Un
+          6 relance ; trois 6 d’affilée font perdre le tour.
+        </p>
+        <button class="btn btn-primary btn-xl" id="btn-rules-close" type="button">Compris</button>
+      </div>
+    </div>
+
+    <script src="js/engine.js"></script>
+    <script src="js/render.js"></script>
+    <script src="js/app.js"></script>
+  </body>
+</html>
