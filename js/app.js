@@ -460,10 +460,27 @@
     connectNet();
   }
 
+  function appBase() {
+    let base = location.pathname;
+    if (base.endsWith("/")) base = base.slice(0, -1);
+    else if (/\.[a-z0-9]+$/i.test(base)) base = base.replace(/\/[^/]+$/, "");
+    if (!base || base === "/") return "";
+    return base;
+  }
+
   function wsUrl() {
     if (location.protocol === "file:") return null;
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
-    return proto + "//" + location.host;
+    return proto + "//" + location.host + appBase() + "/ws";
+  }
+
+  async function probeServer() {
+    try {
+      const res = await fetch(appBase() + "/api/health", { cache: "no-store" });
+      return res.ok;
+    } catch (e) {
+      return false;
+    }
   }
 
   function connectNet() {
@@ -486,6 +503,12 @@
         } catch (e) {}
       },
     };
+    probeServer().then((ok) => {
+      if (!ok && session.net === net) {
+        els.onlineStatus.textContent =
+          "Le site s’affiche, mais le serveur Node ne répond pas. Dans cPanel : Run NPM Install, puis Restart l’app Node.";
+      }
+    });
     ws.addEventListener("open", () => {
       const saved = loadSaved();
       if (saved.name && !els.onlineName.value) els.onlineName.value = saved.name;
@@ -511,6 +534,12 @@
         }
         els.onlineStatus.textContent = "Connexion perdue. Nouvelle tentative…";
         setTimeout(connectNet, 800);
+      }
+    });
+    ws.addEventListener("error", () => {
+      if (session.net === net) {
+        els.onlineStatus.textContent =
+          "WebSocket indisponible. Vérifiez que l’app Node est démarrée sur le serveur.";
       }
     });
     ws.addEventListener("message", (ev) => {

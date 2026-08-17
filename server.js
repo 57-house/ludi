@@ -9,10 +9,15 @@ const PORT = Number(process.env.PORT) || 3000;
 const RECONNECT_MS = 120000;
 const TURN_MS = 60000;
 const app = express();
+app.set("trust proxy", 1);
 app.use(express.static(path.join(__dirname)));
 
+app.get("/api/health", (req, res) => {
+  res.json({ ok: true, app: "LUDI" });
+});
+
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({ server, path: "/ws" });
 
 const rooms = new Map();
 const sockets = new Map();
