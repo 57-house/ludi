@@ -47,6 +47,17 @@
     chatFormGame: document.getElementById("chat-form-game"),
     chatInputLobby: document.getElementById("chat-input-lobby"),
     chatInputGame: document.getElementById("chat-input-game"),
+    chatPanelLobby: document.getElementById("chat-panel-lobby"),
+    chatPanelGame: document.getElementById("chat-panel-game"),
+    chatToggleLobby: document.getElementById("btn-chat-toggle-lobby"),
+    chatToggleGame: document.getElementById("btn-chat-toggle-game"),
+    chatCloseLobby: document.getElementById("btn-chat-close-lobby"),
+    chatCloseGame: document.getElementById("btn-chat-close-game"),
+    chatBadgeLobby: document.getElementById("chat-badge-lobby"),
+    chatBadgeGame: document.getElementById("chat-badge-game"),
+    chatToast: document.getElementById("chat-toast"),
+    chatToastWho: document.querySelector(".chat-toast-who"),
+    chatToastText: document.querySelector(".chat-toast-text"),
   };
 
   const STORAGE_KEY = "ludo-infini-session";
@@ -87,6 +98,13 @@
     myId: null,
     room: null,
     isHost: false,
+    chat: {
+      lobbyOpen: false,
+      gameOpen: false,
+      unreadLobby: 0,
+      unreadGame: 0,
+      toastTimer: null,
+    },
   };
 
   function sleep(ms) {
@@ -144,6 +162,89 @@
       .replace(/>/g, "&gt;");
   }
 
+  function chatScope() {
+    return els.game.classList.contains("active") ? "game" : "lobby";
+  }
+
+  function isChatOpen(scope) {
+    scope = scope || chatScope();
+    return scope === "game" ? session.chat.gameOpen : session.chat.lobbyOpen;
+  }
+
+  function setChatOpen(scope, open) {
+    if (scope === "game") {
+      session.chat.gameOpen = open;
+      if (els.chatPanelGame) els.chatPanelGame.hidden = !open;
+      if (open) {
+        session.chat.unreadGame = 0;
+        updateChatBadge("game");
+        if (els.chatInputGame) els.chatInputGame.focus();
+      }
+    } else {
+      session.chat.lobbyOpen = open;
+      if (els.chatPanelLobby) els.chatPanelLobby.hidden = !open;
+      if (open) {
+        session.chat.unreadLobby = 0;
+        updateChatBadge("lobby");
+        if (els.chatInputLobby) els.chatInputLobby.focus();
+      }
+    }
+  }
+
+  function toggleChat(scope) {
+    setChatOpen(scope, !isChatOpen(scope));
+  }
+
+  function updateChatBadge(scope) {
+    const badge = scope === "game" ? els.chatBadgeGame : els.chatBadgeLobby;
+    const count = scope === "game" ? session.chat.unreadGame : session.chat.unreadLobby;
+    if (!badge) return;
+    if (count > 0) {
+      badge.hidden = false;
+      badge.textContent = count > 9 ? "9+" : String(count);
+    } else {
+      badge.hidden = true;
+      badge.textContent = "0";
+    }
+  }
+
+  function hideChatToast() {
+    if (!els.chatToast) return;
+    els.chatToast.classList.remove("show");
+    clearTimeout(session.chat.toastTimer);
+    session.chat.toastTimer = setTimeout(() => {
+      els.chatToast.hidden = true;
+    }, 280);
+  }
+
+  function showChatToast(message) {
+    if (!message || !message.text || !els.chatToast) return;
+    if (message.playerId && message.playerId === session.myId) return;
+    const scope = chatScope();
+    if (isChatOpen(scope)) return;
+
+    if (scope === "game") {
+      session.chat.unreadGame += 1;
+      updateChatBadge("game");
+    } else {
+      session.chat.unreadLobby += 1;
+      updateChatBadge("lobby");
+    }
+
+    if (els.chatToastWho) {
+      els.chatToastWho.textContent = (message.name || "Joueur") + " :";
+      els.chatToastWho.style.color = message.color || "#fbc02d";
+    }
+    if (els.chatToastText) els.chatToastText.textContent = message.text;
+
+    els.chatToast.hidden = false;
+    void els.chatToast.offsetWidth;
+    els.chatToast.classList.add("show");
+
+    clearTimeout(session.chat.toastTimer);
+    session.chat.toastTimer = setTimeout(hideChatToast, 3200);
+  }
+
   function chatLogs() {
     return [els.chatLogLobby, els.chatLogGame].filter(Boolean);
   }
@@ -173,6 +274,7 @@
         el.appendChild(line);
         el.scrollTop = el.scrollHeight;
       });
+      if (!replace) showChatToast(m);
     });
   }
 
@@ -201,7 +303,7 @@
       els.cube.classList.remove("rolling");
       void els.cube.offsetWidth;
       els.cube.classList.add("rolling");
-      setTimeout(() => els.cube.classList.remove("rolling"), 950);
+      setTimeout(() => els.cube.classList.remove("rolling"), 480);
     }
   }
 
@@ -333,7 +435,7 @@
       action.pawnId
     );
     if (pts.length < 2) return;
-    const duration = Math.min(900, 160 * pts.length);
+    const duration = Math.min(480, 85 * pts.length);
     const t0 = performance.now();
     await new Promise((resolve) => {
       function step(now) {
@@ -365,7 +467,7 @@
     const action = session.game.lastAction;
     if (rolledNow && action && action.dice) {
       setDice(action.dice, true);
-      await sleep(650);
+      await sleep(300);
     }
     if (action && action.type === "move") {
       await animateMove(action);
@@ -409,6 +511,7 @@
   function doRoll() {
     if (session.busy || !session.game || session.game.phase !== "waiting") return;
     if (!currentIsMe() || !session.net) return;
+    log("Lancement du dé…");
     session.net.send({ type: "roll" });
   }
 
@@ -455,6 +558,9 @@
       els.roomInfo.hidden = true;
     }
     clearChat();
+    setChatOpen("lobby", false);
+    setChatOpen("game", false);
+    hideChatToast();
     clearRoomSave();
     setView("lobby");
     connectNet();
@@ -491,7 +597,9 @@
 
     const socket = io({
       path: appBase() + "/socket.io",
-      transports: ["polling", "websocket"],
+      transports: ["websocket", "polling"],
+      upgrade: true,
+      rememberUpgrade: true,
       reconnection: true,
     });
     const net = {
@@ -604,7 +712,7 @@
       if (!els.game.classList.contains("active")) setView("game");
       const action = session.game.lastAction;
       if (msg.type === "state") {
-        await handleResult({ ok: true }, !!(action && action.dice && action.type !== "move"));
+        handleResult({ ok: true }, !!(action && action.dice && action.type !== "move"));
       } else {
         session.highlights = [];
         log("Tout le monde est installé. Que la partie commence.");
@@ -671,7 +779,7 @@
   });
 
   function tryMoveAt(e) {
-    if (e.target.closest("button, input, .dice, .log, .roster, .turn-banner, .chat-box")) return;
+    if (e.target.closest("button, input, .dice, .log, .roster, .turn-banner, .chat-box, .chat-toast")) return;
     if (!session.game || session.game.phase !== "rolled" || session.busy) return;
     const m = mouseOnBoard(e);
     const hit = hitPawn(m.x, m.y);
@@ -683,7 +791,7 @@
   els.game.addEventListener(
     "touchend",
     (e) => {
-      if (e.target.closest("button, input, .dice, .log, .roster, .turn-banner, .chat-box")) return;
+      if (e.target.closest("button, input, .dice, .log, .roster, .turn-banner, .chat-box, .chat-toast")) return;
       e.preventDefault();
       tryMoveAt(e);
     },
@@ -737,6 +845,17 @@
   }
   bindChatForm(els.chatFormLobby, els.chatInputLobby);
   bindChatForm(els.chatFormGame, els.chatInputGame);
+
+  if (els.chatToggleLobby) els.chatToggleLobby.addEventListener("click", () => toggleChat("lobby"));
+  if (els.chatToggleGame) els.chatToggleGame.addEventListener("click", () => toggleChat("game"));
+  if (els.chatCloseLobby) els.chatCloseLobby.addEventListener("click", () => setChatOpen("lobby", false));
+  if (els.chatCloseGame) els.chatCloseGame.addEventListener("click", () => setChatOpen("game", false));
+  if (els.chatToast) {
+    els.chatToast.addEventListener("click", () => {
+      hideChatToast();
+      toggleChat(chatScope());
+    });
+  }
 
   els.btnCopy.addEventListener("click", async () => {
     const url = els.roomUrl.textContent;

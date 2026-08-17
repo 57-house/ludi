@@ -19,8 +19,12 @@ app.get("/api/health", (req, res) => {
 const server = http.createServer(app);
 const io = new Server(server, {
   path: "/socket.io",
-  transports: ["polling", "websocket"],
+  transports: ["websocket", "polling"],
   cors: { origin: true },
+  pingInterval: 8000,
+  pingTimeout: 5000,
+  perMessageDeflate: false,
+  httpCompression: false,
 });
 
 const rooms = new Map();

@@ -48,8 +48,14 @@
                 <button class="btn btn-ghost" id="btn-copy" type="button">Copier le lien</button>
                 <div class="players" id="online-players"></div>
                 <p class="hint" id="online-hint">En attente de joueurs… le plateau s’élargit à chaque entrée.</p>
-                <div class="chat-box">
-                  <div class="chat-head">Chat</div>
+                <button class="btn btn-ghost chat-toggle" id="btn-chat-toggle-lobby" type="button">
+                  Chat <span class="chat-badge" id="chat-badge-lobby" hidden>0</span>
+                </button>
+                <div class="chat-box" id="chat-panel-lobby" hidden>
+                  <div class="chat-head">
+                    <span>Chat</span>
+                    <button class="chat-close" id="btn-chat-close-lobby" type="button" aria-label="Fermer le chat">×</button>
+                  </div>
                   <div class="chat-log" id="chat-log-lobby"></div>
                   <form class="chat-form" id="chat-form-lobby">
                     <input class="chat-input" id="chat-input-lobby" type="text" maxlength="160" placeholder="Écrire…" autocomplete="off" />
@@ -91,6 +97,9 @@
             <div class="hud-actions">
               <div class="roster" id="roster"></div>
               <div class="row hud-btns">
+                <button class="btn btn-ghost" id="btn-chat-toggle-game" type="button">
+                  Chat <span class="chat-badge" id="chat-badge-game" hidden>0</span>
+                </button>
                 <button class="btn btn-ghost" id="btn-rules" type="button">Règles</button>
                 <button class="btn btn-danger" id="btn-quit" type="button">Quitter</button>
               </div>
@@ -99,8 +108,11 @@
           <div class="hud-bottom">
             <div class="hud-left">
               <div class="log" id="log">La partie commence.</div>
-              <div class="chat-box chat-box-game">
-                <div class="chat-head">Chat</div>
+              <div class="chat-box chat-box-game" id="chat-panel-game" hidden>
+                <div class="chat-head">
+                  <span>Chat</span>
+                  <button class="chat-close" id="btn-chat-close-game" type="button" aria-label="Fermer le chat">×</button>
+                </div>
                 <div class="chat-log" id="chat-log-game"></div>
                 <form class="chat-form" id="chat-form-game">
                   <input class="chat-input" id="chat-input-game" type="text" maxlength="160" placeholder="Écrire…" autocomplete="off" />
@@ -145,6 +157,13 @@
           6 relance ; trois 6 d’affilée font perdre le tour.
         </p>
         <button class="btn btn-primary btn-xl" id="btn-rules-close" type="button">Compris</button>
+      </div>
+    </div>
+
+    <div class="chat-toast" id="chat-toast" hidden role="status" aria-live="polite">
+      <div class="chat-toast-inner">
+        <strong class="chat-toast-who"></strong>
+        <span class="chat-toast-text"></span>
       </div>
     </div>
 
