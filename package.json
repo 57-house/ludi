@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "LUDI — Ludo en ligne, plateau qui s'agrandit avec le nombre de joueurs",
   "main": "server.js",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "start": "node server.js"
   },

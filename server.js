@@ -375,7 +375,14 @@ function lanUrls(port) {
   return urls;
 }
 
-server.listen(PORT, "0.0.0.0", () => {
-  console.log("LUDI : http://localhost:" + PORT);
-  lanUrls(PORT).forEach((u) => console.log("Réseau local : " + u));
-});
+function boot() {
+  const port = Number(process.env.PORT) || 3000;
+  server.listen(port, "0.0.0.0", () => {
+    console.log("LUDI : port " + port);
+    if (typeof PhusionPassenger === "undefined") {
+      lanUrls(port).forEach((u) => console.log("Réseau local : " + u));
+    }
+  });
+}
+
+boot();
