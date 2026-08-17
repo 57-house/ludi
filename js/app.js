@@ -468,12 +468,6 @@
     return base;
   }
 
-  function wsUrl() {
-    if (location.protocol === "file:") return null;
-    const proto = location.protocol === "https:" ? "wss:" : "ws:";
-    return proto + "//" + location.host + appBase() + "/ws";
-  }
-
   async function probeServer() {
     try {
       const res = await fetch(appBase() + "/api/health", { cache: "no-store" });
@@ -484,23 +478,30 @@
   }
 
   function connectNet() {
-    const url = wsUrl();
-    if (!url) {
+    if (location.protocol === "file:") {
       els.onlineStatus.textContent = "Ouvrez le jeu via npm start pour jouer en ligne.";
       return null;
     }
-    if (session.net && session.net.ws && session.net.ws.readyState === 1) return session.net;
-    const ws = new WebSocket(url);
+    if (typeof io === "undefined") {
+      els.onlineStatus.textContent = "Chargement du client réseau…";
+      setTimeout(connectNet, 400);
+      return null;
+    }
+    if (session.net && session.net.socket && session.net.socket.connected) return session.net;
+
+    const socket = io({
+      path: appBase() + "/socket.io",
+      transports: ["polling", "websocket"],
+      reconnection: true,
+    });
     const net = {
-      ws,
+      socket,
       send(msg) {
-        if (ws.readyState === 1) ws.send(JSON.stringify(msg));
+        socket.emit("msg", msg);
       },
       close() {
         session.skipReconnect = true;
-        try {
-          ws.close();
-        } catch (e) {}
+        socket.disconnect();
       },
     };
     probeServer().then((ok) => {
@@ -509,7 +510,7 @@
           "Le site s’affiche, mais le serveur Node ne répond pas. Dans cPanel : Run NPM Install, puis Restart l’app Node.";
       }
     });
-    ws.addEventListener("open", () => {
+    socket.on("connect", () => {
       const saved = loadSaved();
       if (saved.name && !els.onlineName.value) els.onlineName.value = saved.name;
       if (saved.code && saved.playerId) {
@@ -525,7 +526,7 @@
         els.onlineStatus.textContent = "Connecté. Créez une table ou entrez un code.";
       }
     });
-    ws.addEventListener("close", () => {
+    socket.on("disconnect", () => {
       if (session.net === net) {
         session.net = null;
         if (session.skipReconnect) {
@@ -536,21 +537,12 @@
         setTimeout(connectNet, 800);
       }
     });
-    ws.addEventListener("error", () => {
+    socket.on("connect_error", () => {
       if (session.net === net) {
-        els.onlineStatus.textContent =
-          "WebSocket indisponible. Vérifiez que l’app Node est démarrée sur le serveur.";
+        els.onlineStatus.textContent = "Connexion au salon impossible. Nouvelle tentative…";
       }
     });
-    ws.addEventListener("message", (ev) => {
-      let msg;
-      try {
-        msg = JSON.parse(ev.data);
-      } catch (e) {
-        return;
-      }
-      onNet(msg);
-    });
+    socket.on("msg", (msg) => onNet(msg));
     session.net = net;
     return net;
   }
@@ -650,8 +642,8 @@
 
   function sendWhenReady(net, msg) {
     const send = () => net.send(msg);
-    if (net.ws.readyState === 1) send();
-    else net.ws.addEventListener("open", send, { once: true });
+    if (net.socket.connected) send();
+    else net.socket.once("connect", send);
   }
 
   els.btnRoll.addEventListener("click", doRoll);

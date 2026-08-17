@@ -2,7 +2,7 @@ const path = require("path");
 const http = require("http");
 const os = require("os");
 const express = require("express");
-const { WebSocketServer } = require("ws");
+const { Server } = require("socket.io");
 const E = require("./js/engine");
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -17,7 +17,11 @@ app.get("/api/health", (req, res) => {
 });
 
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server, path: "/ws" });
+const io = new Server(server, {
+  path: "/socket.io",
+  transports: ["polling", "websocket"],
+  cors: { origin: true },
+});
 
 const rooms = new Map();
 const sockets = new Map();
@@ -38,17 +42,17 @@ function publicRoom(room) {
       id: p.id,
       name: p.name,
       color: p.color,
-      disconnected: !p.ws,
+      disconnected: !p.socket,
     })),
   };
 }
 
-function send(ws, msg) {
-  if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg));
+function send(socket, msg) {
+  if (socket && socket.connected) socket.emit("msg", msg);
 }
 
 function broadcast(room, msg) {
-  room.players.forEach((p) => send(p.ws, msg));
+  room.players.forEach((p) => send(p.socket, msg));
 }
 
 function recolor(room) {
@@ -62,23 +66,17 @@ function uid() {
   return Math.random().toString(36).slice(2, 10);
 }
 
-wss.on("connection", (ws) => {
-  const client = { id: uid(), ws, room: null };
-  sockets.set(ws, client);
+io.on("connection", (socket) => {
+  const client = { id: uid(), socket, room: null };
+  sockets.set(socket.id, client);
 
-  ws.on("message", (raw) => {
-    let msg;
-    try {
-      msg = JSON.parse(String(raw));
-    } catch (e) {
-      return;
-    }
-    handle(client, msg);
+  socket.on("msg", (msg) => {
+    if (msg && typeof msg === "object") handle(client, msg);
   });
 
-  ws.on("close", () => {
+  socket.on("disconnect", () => {
     leave(client, false);
-    sockets.delete(ws);
+    sockets.delete(socket.id);
   });
 });
 
@@ -97,7 +95,7 @@ function attachPlayer(player, client) {
     clearTimeout(player.timer);
     player.timer = null;
   }
-  player.ws = client.ws;
+  player.socket = client.socket;
   client.id = player.id;
   client.room = player.roomCode;
 }
@@ -109,7 +107,7 @@ function createRoom(client, name) {
   const player = {
     id: client.id,
     name: String(name || "Hôte").slice(0, 18),
-    ws: client.ws,
+    socket: client.socket,
     color: E.hslColor(0, 1),
     roomCode: c,
     timer: null,
@@ -125,8 +123,8 @@ function createRoom(client, name) {
   rooms.set(c, room);
   client.room = c;
   recolor(room);
-  send(client.ws, { type: "joined", playerId: client.id, isHost: true, room: publicRoom(room) });
-  send(client.ws, { type: "lobby", room: publicRoom(room) });
+  send(client.socket, { type: "joined", playerId: client.id, isHost: true, room: publicRoom(room) });
+  send(client.socket, { type: "lobby", room: publicRoom(room) });
   sendChatHistory(client, room);
 }
 
@@ -136,17 +134,17 @@ function resumeClient(client, room, player) {
     const gp = room.game.players.find((p) => p.id === player.id);
     if (gp) gp.disconnected = false;
   }
-  send(client.ws, {
+  send(client.socket, {
     type: "joined",
     playerId: player.id,
     isHost: room.hostId === player.id,
     room: publicRoom(room),
   });
   if (room.status === "playing" && room.game) {
-    send(client.ws, { type: "resume", state: room.game, room: publicRoom(room) });
+    send(client.socket, { type: "resume", state: room.game, room: publicRoom(room) });
     broadcast(room, { type: "lobby", room: publicRoom(room) });
   } else if (room.status === "ended" && room.game) {
-    send(client.ws, { type: "resume", state: room.game, room: publicRoom(room) });
+    send(client.socket, { type: "resume", state: room.game, room: publicRoom(room) });
   } else {
     broadcast(room, { type: "lobby", room: publicRoom(room) });
   }
@@ -156,7 +154,7 @@ function resumeClient(client, room, player) {
 function joinRoom(client, rawCode, name, playerId) {
   const c = String(rawCode || "").trim().toUpperCase();
   const room = rooms.get(c);
-  if (!room) return send(client.ws, { type: "error", error: "Table introuvable" });
+  if (!room) return send(client.socket, { type: "error", error: "Table introuvable" });
 
   const existing = playerId && room.players.find((p) => p.id === playerId);
   if (existing) {
@@ -168,14 +166,14 @@ function joinRoom(client, rawCode, name, playerId) {
   }
 
   if (room.status !== "lobby") {
-    return send(client.ws, { type: "error", error: "La partie a déjà commencé" });
+    return send(client.socket, { type: "error", error: "La partie a déjà commencé" });
   }
   if (room.players.some((p) => p.id === client.id)) return;
   leave(client, true);
   const player = {
     id: client.id,
     name: String(name || "Invité").slice(0, 18),
-    ws: client.ws,
+    socket: client.socket,
     color: E.hslColor(room.players.length, room.players.length + 1),
     roomCode: c,
     timer: null,
@@ -183,7 +181,7 @@ function joinRoom(client, rawCode, name, playerId) {
   room.players.push(player);
   client.room = c;
   recolor(room);
-  send(client.ws, {
+  send(client.socket, {
     type: "joined",
     playerId: client.id,
     isHost: room.hostId === client.id,
@@ -201,7 +199,7 @@ function sanitizeChat(text) {
 }
 
 function sendChatHistory(client, room) {
-  send(client.ws, { type: "chat-history", messages: (room.chat || []).slice(-80) });
+  send(client.socket, { type: "chat-history", messages: (room.chat || []).slice(-80) });
 }
 
 function chatMessage(client, text) {
@@ -228,8 +226,8 @@ function chatMessage(client, text) {
 function startRoom(client) {
   const room = rooms.get(client.room);
   if (!room) return;
-  if (room.hostId !== client.id) return send(client.ws, { type: "error", error: "Seul l’hôte ouvre la table" });
-  if (room.players.length < 2) return send(client.ws, { type: "error", error: "Il faut au moins 2 joueurs" });
+  if (room.hostId !== client.id) return send(client.socket, { type: "error", error: "Seul l’hôte ouvre la table" });
+  if (room.players.length < 2) return send(client.socket, { type: "error", error: "Il faut au moins 2 joueurs" });
   room.game = E.createGame(
     room.players.map((p) => ({ id: p.id, name: p.name, color: p.color, isBot: false }))
   );
@@ -248,11 +246,11 @@ function playRoll(client) {
   if (!room || !room.game) return;
   const cur = currentPlayer(room);
   if (!cur || cur.id !== client.id) {
-    return send(client.ws, { type: "error", error: "Ce n’est pas votre tour" });
+    return send(client.socket, { type: "error", error: "Ce n’est pas votre tour" });
   }
   const index = room.game.current;
   const res = E.rollDice(room.game, index);
-  if (!res.ok) return send(client.ws, { type: "error", error: res.error });
+  if (!res.ok) return send(client.socket, { type: "error", error: res.error });
   if (room.game.phase === "ended") room.status = "ended";
   resetTurnTimer(room);
   broadcast(room, { type: "state", state: room.game });
@@ -263,10 +261,10 @@ function playMove(client, pawnId) {
   if (!room || !room.game) return;
   const cur = currentPlayer(room);
   if (!cur || cur.id !== client.id) {
-    return send(client.ws, { type: "error", error: "Ce n’est pas votre tour" });
+    return send(client.socket, { type: "error", error: "Ce n’est pas votre tour" });
   }
   const res = E.applyMove(room.game, room.game.current, pawnId);
-  if (!res.ok) return send(client.ws, { type: "error", error: res.error });
+  if (!res.ok) return send(client.socket, { type: "error", error: res.error });
   if (room.game.phase === "ended") room.status = "ended";
   resetTurnTimer(room);
   broadcast(room, { type: "state", state: room.game });
@@ -319,7 +317,7 @@ function leave(client, immediate) {
     return;
   }
   if (!immediate) {
-    player.ws = null;
+    player.socket = null;
     client.room = null;
     if (player.timer) clearTimeout(player.timer);
     player.timer = setTimeout(() => {
@@ -327,7 +325,7 @@ function leave(client, immediate) {
       const still = rooms.get(c);
       if (!still) return;
       const pl = still.players.find((p) => p.id === player.id);
-      if (!pl || pl.ws) return;
+      if (!pl || pl.socket) return;
       dropPlayer(still, player.id);
     }, RECONNECT_MS);
     return;
