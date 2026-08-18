@@ -1,6 +1,8 @@
 (function () {
   const E = window.LudoEngine;
   const B = window.LudoBoard;
+  const S = window.LudoSounds;
+  const F = window.LudoFireworks;
 
   const DICE_ROT = {
     1: [0, 0],
@@ -27,7 +29,8 @@
     roster: document.getElementById("roster"),
     log: document.getElementById("log"),
     cube: document.getElementById("cube"),
-    btnRoll: document.getElementById("btn-roll"),
+    diceWrap: document.getElementById("dice-wrap"),
+    dice: document.getElementById("dice"),
     win: document.getElementById("overlay-win"),
     winText: document.getElementById("win-text"),
     podium: document.getElementById("podium"),
@@ -55,6 +58,7 @@
     chatCloseGame: document.getElementById("btn-chat-close-game"),
     chatBadgeLobby: document.getElementById("chat-badge-lobby"),
     chatBadgeGame: document.getElementById("chat-badge-game"),
+    chatBackdropGame: document.getElementById("chat-backdrop-game"),
     chatToast: document.getElementById("chat-toast"),
     chatToastWho: document.querySelector(".chat-toast-who"),
     chatToastText: document.querySelector(".chat-toast-text"),
@@ -175,6 +179,7 @@
     if (scope === "game") {
       session.chat.gameOpen = open;
       if (els.chatPanelGame) els.chatPanelGame.hidden = !open;
+      if (els.chatBackdropGame) els.chatBackdropGame.hidden = !open;
       if (open) {
         session.chat.unreadGame = 0;
         updateChatBadge("game");
@@ -287,6 +292,8 @@
   function setView(name) {
     els.lobby.classList.toggle("active", name === "lobby");
     els.game.classList.toggle("active", name === "game");
+    if (els.chatToggleGame) els.chatToggleGame.hidden = name !== "game";
+    if (name !== "game") setChatOpen("game", false);
     if (name === "lobby") requestAnimationFrame(drawPreview);
     if (name === "game") {
       startHudClock();
@@ -325,12 +332,15 @@
     els.turnName.style.color = pl ? pl.color.cssDark || pl.color.css : "";
     if (g.phase === "ended") els.turnHelp.textContent = "Partie terminée";
     else if (g.phase === "rolled") els.turnHelp.textContent = (currentIsMe() ? "Cliquez un pion allumé" : "L’adversaire choisit un pion") + turnClock();
-    else els.turnHelp.textContent = (currentIsMe() ? "À vous : lancez le dé" : "En attente du joueur…") + turnClock();
+    else els.turnHelp.textContent = (currentIsMe() ? "Cliquez le dé pour jouer" : "En attente du joueur…") + turnClock();
 
     els.roster.innerHTML = "";
     g.players.forEach((p, i) => {
       const span = document.createElement("span");
-      if (i === g.current) span.classList.add("current");
+      if (i === g.current && g.phase !== "ended") {
+        span.classList.add("current", "playing");
+        span.style.setProperty("--player-color", p.color.css);
+      }
       const home = p.pawns.filter((pw) => pw.area === "done").length;
       span.innerHTML =
         '<i class="swatch" style="background:' +
@@ -343,7 +353,33 @@
       els.roster.appendChild(span);
     });
 
-    els.btnRoll.disabled = !(g.phase === "waiting" && currentIsMe() && !session.busy && g.phase !== "ended");
+    const canRoll = g.phase === "waiting" && currentIsMe() && !session.busy && g.phase !== "ended";
+    const isPlaying = pl && g.phase !== "ended";
+    els.diceWrap.classList.toggle("turn-active", g.phase === "waiting");
+    els.diceWrap.classList.toggle("can-roll", canRoll);
+    if (isPlaying) {
+      els.diceWrap.style.setProperty("--turn-color", pl.color.css);
+      els.diceWrap.style.setProperty("--dice-face-top", pl.color.cssLight || pl.color.cssSoft || pl.color.css);
+      els.diceWrap.style.setProperty("--dice-face-bottom", pl.color.css);
+      els.diceWrap.style.setProperty("--dice-border", pl.color.cssDark || pl.color.css);
+      els.diceWrap.style.setProperty("--dice-pip", "#111");
+    } else {
+      els.diceWrap.style.removeProperty("--turn-color");
+      els.diceWrap.style.removeProperty("--dice-face-top");
+      els.diceWrap.style.removeProperty("--dice-face-bottom");
+      els.diceWrap.style.removeProperty("--dice-border");
+      els.diceWrap.style.removeProperty("--dice-pip");
+    }
+    els.dice.setAttribute("aria-disabled", canRoll ? "false" : "true");
+    els.dice.tabIndex = canRoll ? 0 : -1;
+
+    els.game.classList.toggle("board-turn-active", isPlaying);
+    if (isPlaying) {
+      els.game.style.setProperty("--turn-color", pl.color.css);
+    } else {
+      els.game.style.removeProperty("--turn-color");
+    }
+
     if (els.turnHelp && remainingTurnSec() <= 10 && g.phase !== "ended") {
       els.turnHelp.style.color = "#c62828";
     } else if (els.turnHelp) {
@@ -388,17 +424,27 @@
       anim: session.anim,
       time: performance.now(),
     });
-    if (session.highlights.length && !session.anim) ensureBounce();
+    const g = session.game;
+    if (g.phase !== "ended" || session.highlights.length || session.anim) ensureBoardAnim();
   }
 
-  function ensureBounce() {
-    if (session.bounceRaf) return;
-    session.bounceRaf = requestAnimationFrame(() => {
-      session.bounceRaf = 0;
-      if (!session.game || !els.game.classList.contains("active")) return;
-      if (!session.highlights.length || session.anim) return;
+  function ensureBoardAnim() {
+    if (session.boardAnimRaf) return;
+    function tick() {
+      if (!session.game || !els.game.classList.contains("active")) {
+        session.boardAnimRaf = 0;
+        return;
+      }
+      const g = session.game;
+      const active = g.phase !== "ended" || session.highlights.length || session.anim;
+      if (!active) {
+        session.boardAnimRaf = 0;
+        return;
+      }
       drawGame(true);
-    });
+      session.boardAnimRaf = requestAnimationFrame(tick);
+    }
+    session.boardAnimRaf = requestAnimationFrame(tick);
   }
 
   function mouseOnBoard(ev) {
@@ -435,13 +481,19 @@
       action.pawnId
     );
     if (pts.length < 2) return;
+    if (S) S.playPawnMove();
     const duration = Math.min(480, 85 * pts.length);
     const t0 = performance.now();
+    let lastStep = -1;
     await new Promise((resolve) => {
       function step(now) {
         const t = Math.min(1, (now - t0) / duration);
         const f = t * (pts.length - 1);
         const i = Math.min(pts.length - 2, Math.floor(f));
+        if (i !== lastStep) {
+          lastStep = i;
+          if (i > 0 && S) S.playPawnStep();
+        }
         const lt = f - i;
         const a = pts[i];
         const b = pts[i + 1];
@@ -466,6 +518,7 @@
     }
     const action = session.game.lastAction;
     if (rolledNow && action && action.dice) {
+      if (S) S.playDiceRoll();
       setDice(action.dice, true);
       await sleep(300);
     }
@@ -543,11 +596,13 @@
         els.podium.appendChild(d);
       });
     els.win.classList.add("show");
+    if (F) F.start("win-fireworks");
   }
 
   function quitToLobby() {
     session.game = null;
     session.highlights = [];
+    if (F) F.stop();
     els.win.classList.remove("show");
     if (session.net) {
       session.net.send({ type: "leave" });
@@ -754,7 +809,18 @@
     else net.socket.once("connect", send);
   }
 
-  els.btnRoll.addEventListener("click", doRoll);
+  function tryRollDice() {
+    if (session.busy || !session.game || session.game.phase !== "waiting" || !currentIsMe()) return;
+    doRoll();
+  }
+
+  els.diceWrap.addEventListener("click", tryRollDice);
+  els.dice.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      tryRollDice();
+    }
+  });
   document.getElementById("btn-quit").addEventListener("click", quitToLobby);
   document.getElementById("btn-again").addEventListener("click", quitToLobby);
   document.getElementById("btn-rules").addEventListener("click", () => {
@@ -779,7 +845,7 @@
   });
 
   function tryMoveAt(e) {
-    if (e.target.closest("button, input, .dice, .log, .roster, .turn-banner, .chat-box, .chat-toast")) return;
+    if (e.target.closest("button, input, .dice, .log, .roster, .turn-banner, .chat-box, .chat-toast, .chat-fab, .chat-backdrop")) return;
     if (!session.game || session.game.phase !== "rolled" || session.busy) return;
     const m = mouseOnBoard(e);
     const hit = hitPawn(m.x, m.y);
@@ -791,7 +857,7 @@
   els.game.addEventListener(
     "touchend",
     (e) => {
-      if (e.target.closest("button, input, .dice, .log, .roster, .turn-banner, .chat-box, .chat-toast")) return;
+      if (e.target.closest("button, input, .dice, .log, .roster, .turn-banner, .chat-box, .chat-toast, .chat-fab, .chat-backdrop")) return;
       e.preventDefault();
       tryMoveAt(e);
     },
@@ -846,10 +912,30 @@
   bindChatForm(els.chatFormLobby, els.chatInputLobby);
   bindChatForm(els.chatFormGame, els.chatInputGame);
 
+  function bindChatClose(el, scope) {
+    if (!el) return;
+    const close = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setChatOpen(scope, false);
+    };
+    el.addEventListener("click", close);
+    el.addEventListener("touchend", close, { passive: false });
+  }
+
   if (els.chatToggleLobby) els.chatToggleLobby.addEventListener("click", () => toggleChat("lobby"));
-  if (els.chatToggleGame) els.chatToggleGame.addEventListener("click", () => toggleChat("game"));
-  if (els.chatCloseLobby) els.chatCloseLobby.addEventListener("click", () => setChatOpen("lobby", false));
-  if (els.chatCloseGame) els.chatCloseGame.addEventListener("click", () => setChatOpen("game", false));
+  if (els.chatToggleGame) {
+    const openGameChat = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleChat("game");
+    };
+    els.chatToggleGame.addEventListener("click", openGameChat);
+    els.chatToggleGame.addEventListener("touchend", openGameChat, { passive: false });
+  }
+  bindChatClose(els.chatCloseLobby, "lobby");
+  bindChatClose(els.chatCloseGame, "game");
+  if (els.chatBackdropGame) bindChatClose(els.chatBackdropGame, "game");
   if (els.chatToast) {
     els.chatToast.addEventListener("click", () => {
       hideChatToast();
@@ -881,6 +967,12 @@
   const salle = params.get("salle");
   if (salle) els.joinCode.value = salle.toUpperCase();
   else if (saved.code) els.joinCode.value = saved.code;
+
+  function unlockAudio() {
+    if (S) S.unlock();
+  }
+  document.addEventListener("click", unlockAudio, { once: true, capture: true });
+  document.addEventListener("touchstart", unlockAudio, { once: true, capture: true });
 
   connectNet();
   drawPreview();

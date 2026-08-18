@@ -220,6 +220,75 @@
     };
   }
 
+  function turnPulse(time) {
+    return 0.5 + 0.5 * Math.sin((time || 0) / 550);
+  }
+
+  function collectBlinkCells(layout, state, highlights) {
+    const cells = [];
+    const yards = [];
+    const seen = new Set();
+    function add(quad, color) {
+      if (!quad || !color) return;
+      const key = quad.map((p) => Math.round(p.x) + "," + Math.round(p.y)).join("|");
+      if (seen.has(key)) return;
+      seen.add(key);
+      cells.push({ quad, color });
+    }
+    if (!state || state.phase === "ended") return { cells, yards };
+    const cur = state.current;
+    const pl = state.players[cur];
+    if (!pl) return { cells, yards };
+    const yard = layout.yards[cur];
+    if (yard) yards.push({ yard, color: pl.color });
+    const startCell = layout.trackCells[cur * E.SQUARES_PER_PLAYER];
+    if (startCell) add(startCell.quad, pl.color);
+    (highlights || []).forEach((h) => {
+      const pawn = state.players[h.player].pawns[h.pawnId];
+      const color = state.players[h.player].color;
+      if (pawn.area === "track") add(layout.trackCells[pawn.index].quad, color);
+      else if (pawn.area === "home") add(layout.homePaths[h.player][pawn.index].quad, color);
+    });
+    return { cells, yards };
+  }
+
+  function drawBlinkYard(ctx, yard, color, pulse) {
+    const s = yard.size;
+    ctx.save();
+    ctx.translate(yard.x, yard.y);
+    ctx.rotate(yard.angle);
+    ctx.beginPath();
+    ctx.rect(-s / 2, -s / 2, s, s);
+    ctx.fillStyle = color.cssLight || color.cssSoft || color.css;
+    ctx.globalAlpha = 0.14 + pulse * 0.38;
+    ctx.fill();
+    ctx.strokeStyle = color.cssDark || color.css;
+    ctx.lineWidth = 3 + pulse * 6;
+    ctx.globalAlpha = 0.55 + pulse * 0.45;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawBlinkCells(ctx, cells, yards, time) {
+    const pulse = turnPulse(time);
+    (yards || []).forEach(({ yard, color }) => drawBlinkYard(ctx, yard, color, pulse));
+    cells.forEach(({ quad, color }) => {
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(quad[0].x, quad[0].y);
+      for (let i = 1; i < quad.length; i++) ctx.lineTo(quad[i].x, quad[i].y);
+      ctx.closePath();
+      ctx.fillStyle = color.cssLight || color.cssSoft || color.css;
+      ctx.globalAlpha = 0.18 + pulse * 0.42;
+      ctx.fill();
+      ctx.strokeStyle = color.cssDark || color.css;
+      ctx.lineWidth = 2 + pulse * 5;
+      ctx.globalAlpha = 0.55 + pulse * 0.45;
+      ctx.stroke();
+      ctx.restore();
+    });
+  }
+
   function fillQuad(ctx, quad, fill, stroke) {
     ctx.beginPath();
     ctx.moveTo(quad[0].x, quad[0].y);
@@ -264,8 +333,9 @@
     ctx.closePath();
   }
 
-  function pawnRadius(layout) {
-    return Math.max(8, layout.cs * 0.36);
+  function pawnRadius(layout, area) {
+    const scale = area === "done" ? 0.24 : area === "yard" ? 0.28 : 0.19;
+    return Math.max(4, layout.cs * scale);
   }
 
   function pawnScreenPos(layout, state, pi, pawn, anim) {
@@ -284,7 +354,7 @@
           .map((p) => ({ pi: pii, id: p.id }))
       );
       const k = stack.findIndex((s) => s.pi === pi && s.id === pawn.id);
-      const spread = layout.cs * 0.18;
+      const spread = layout.cs * 0.14;
       const ang = (k / Math.max(stack.length, 1)) * Math.PI * 2;
       return {
         x: cell.center.x + Math.cos(ang) * spread * (stack.length > 1 ? 1 : 0),
@@ -424,14 +494,16 @@
       ctx.stroke();
       if (state && state.players[pi]) {
         ctx.save();
-        ctx.rotate(-yard.angle);
+        const fontSize = Math.max(9, Math.min(inset * 0.65, s * 0.1));
+        ctx.font = `900 ${fontSize}px "Nunito", sans-serif`;
         ctx.fillStyle = "#ffffff";
-        ctx.font = `900 ${Math.max(10, Math.min(inset * 0.72, s * 0.11))}px "Nunito", sans-serif`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.shadowColor = "rgba(0,0,0,0.35)";
         ctx.shadowBlur = 3;
-        ctx.fillText(state.players[pi].name, 0, -s / 2 + inset * 0.5, s * 0.72);
+        ctx.translate(-s / 2 + inset * 0.55, 0);
+        ctx.rotate(-Math.PI / 2);
+        ctx.fillText(state.players[pi].name, 0, 0, s - inset * 2.2);
         ctx.restore();
       }
       ctx.restore();
@@ -480,9 +552,13 @@
       ctx.stroke();
     });
 
+    const blinkTargets = collectBlinkCells(layout, state, highlights);
+    if (blinkTargets.cells.length || blinkTargets.yards.length) {
+      drawBlinkCells(ctx, blinkTargets.cells, blinkTargets.yards, time);
+    }
+
     const hits = [];
     if (state) {
-      const r = pawnRadius(layout);
       const movable = new Set((highlights || []).map((h) => h.player + "-" + h.pawnId));
       const t = time || 0;
       state.players.forEach((pl, pi) => {
@@ -492,9 +568,17 @@
           const glow = movable.has(key);
           const dim = state.phase === "ended" && pl.rank !== 1;
           const bounce = glow
-            ? (0.55 + 0.45 * Math.abs(Math.sin(t / 160 + pawn.id * 0.85))) * layout.cs * 0.32
+            ? (0.55 + 0.45 * Math.abs(Math.sin(t / 160 + pawn.id * 0.85))) * layout.cs * 0.2
             : 0;
-          const size = pawn.area === "yard" ? layout.yards[pi].slots[pawn.id].r * 0.92 : r;
+          let size;
+          if (pawn.area === "yard") {
+            size = layout.yards[pi].slots[pawn.id].r * 0.88;
+          } else {
+            size = pawnRadius(layout, pawn.area);
+            if (glow && (pawn.area === "track" || pawn.area === "home")) {
+              size = Math.min(layout.cs * 0.24, size * 1.2);
+            }
+          }
           drawPawn(ctx, pos.x, pos.y, size, pl.color, bounce, dim);
           hits.push({
             player: pi,

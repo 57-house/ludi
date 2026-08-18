@@ -91,37 +91,23 @@
             <div class="turn-banner" id="turn-banner">
               <span class="tiny">Tour en cours</span>
               <strong id="turn-name">—</strong>
-              <span class="tiny" id="turn-help">Lancez le dé</span>
+              <span class="tiny" id="turn-help">Cliquez le dé</span>
             </div>
             </div>
             <div class="hud-actions">
               <div class="roster" id="roster"></div>
               <div class="row hud-btns">
-                <button class="btn btn-ghost" id="btn-chat-toggle-game" type="button">
-                  Chat <span class="chat-badge" id="chat-badge-game" hidden>0</span>
-                </button>
-                <button class="btn btn-ghost" id="btn-rules" type="button">Règles</button>
-                <button class="btn btn-danger" id="btn-quit" type="button">Quitter</button>
+                <button class="btn btn-ghost btn-compact" id="btn-rules" type="button" title="Règles">?</button>
+                <button class="btn btn-danger btn-compact" id="btn-quit" type="button">Quit</button>
               </div>
             </div>
           </div>
           <div class="hud-bottom">
             <div class="hud-left">
               <div class="log" id="log">La partie commence.</div>
-              <div class="chat-box chat-box-game" id="chat-panel-game" hidden>
-                <div class="chat-head">
-                  <span>Chat</span>
-                  <button class="chat-close" id="btn-chat-close-game" type="button" aria-label="Fermer le chat">×</button>
-                </div>
-                <div class="chat-log" id="chat-log-game"></div>
-                <form class="chat-form" id="chat-form-game">
-                  <input class="chat-input" id="chat-input-game" type="text" maxlength="160" placeholder="Écrire…" autocomplete="off" />
-                  <button class="btn btn-blue" type="submit">OK</button>
-                </form>
-              </div>
             </div>
-            <div class="dice-wrap">
-              <div class="dice">
+            <div class="dice-wrap" id="dice-wrap">
+              <div class="dice" id="dice" role="button" tabindex="0" aria-label="Lancer le dé">
                 <div class="cube" id="cube">
                   <div class="face face-1"></div>
                   <div class="face face-2"></div>
@@ -131,14 +117,31 @@
                   <div class="face face-6"></div>
                 </div>
               </div>
-              <button class="btn btn-primary btn-xl" id="btn-roll" type="button">Lancer le dé</button>
             </div>
           </div>
         </div>
       </section>
     </div>
 
+    <button class="chat-fab chat-fab-game" id="btn-chat-toggle-game" type="button" aria-label="Ouvrir le chat" hidden>
+      <span class="chat-fab-icon">💬</span>
+      <span class="chat-badge" id="chat-badge-game" hidden>0</span>
+    </button>
+    <div class="chat-backdrop" id="chat-backdrop-game" hidden></div>
+    <div class="chat-box chat-drawer" id="chat-panel-game" hidden>
+      <div class="chat-head">
+        <span>Chat</span>
+        <button class="chat-close" id="btn-chat-close-game" type="button" aria-label="Fermer le chat">×</button>
+      </div>
+      <div class="chat-log" id="chat-log-game"></div>
+      <form class="chat-form" id="chat-form-game">
+        <input class="chat-input" id="chat-input-game" type="text" maxlength="160" placeholder="Écrire…" autocomplete="off" />
+        <button class="btn btn-blue" type="submit">OK</button>
+      </form>
+    </div>
+
     <div class="overlay" id="overlay-win">
+      <canvas class="win-fireworks" id="win-fireworks" aria-hidden="true"></canvas>
       <div class="modal">
         <h2>Victoire</h2>
         <p id="win-text"></p>
@@ -170,6 +173,8 @@
     <script src="/socket.io/socket.io.js"></script>
     <script src="js/engine.js"></script>
     <script src="js/render.js"></script>
+    <script src="js/sounds.js"></script>
+    <script src="js/fireworks.js"></script>
     <script src="js/app.js"></script>
   </body>
 </html>
