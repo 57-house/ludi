@@ -11,6 +11,21 @@
   --danger: #c62828;
   --shadow: 0 16px 40px rgba(40, 20, 10, 0.12);
   --radius: 24px;
+  --pattern-tiles:
+    url("../img/pattern-dice.svg"),
+    url("../img/pattern-pawn.svg"),
+    url("../img/pattern-dice-blue.svg"),
+    url("../img/pattern-pawn-yellow.svg");
+  --pattern-size:
+    88px 88px,
+    76px 76px,
+    96px 96px,
+    68px 68px;
+  --pattern-pos:
+    0 0,
+    38px 38px,
+    48px 12px,
+    8px 56px;
   font-synthesis: none;
 }
 
@@ -24,16 +39,40 @@ body {
   min-height: 100%;
   color: var(--ink);
   font-family: "Nunito", system-ui, sans-serif;
-  background:
-    radial-gradient(900px 500px at 0% 0%, rgba(229, 57, 53, 0.16), transparent 55%),
-    radial-gradient(800px 480px at 100% 0%, rgba(30, 136, 229, 0.16), transparent 50%),
-    radial-gradient(700px 420px at 100% 100%, rgba(251, 192, 45, 0.2), transparent 50%),
-    radial-gradient(700px 420px at 0% 100%, rgba(67, 160, 71, 0.16), transparent 50%),
-    var(--bg);
+  background-color: var(--bg);
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.22;
+  background-image:
+    var(--pattern-tiles),
+    radial-gradient(900px 500px at 0% 0%, rgba(229, 57, 53, 0.12), transparent 55%),
+    radial-gradient(800px 480px at 100% 0%, rgba(30, 136, 229, 0.12), transparent 50%),
+    radial-gradient(700px 420px at 100% 100%, rgba(251, 192, 45, 0.14), transparent 50%),
+    radial-gradient(700px 420px at 0% 100%, rgba(67, 160, 71, 0.12), transparent 50%);
+  background-size:
+    var(--pattern-size),
+    auto,
+    auto,
+    auto,
+    auto;
+  background-position:
+    var(--pattern-pos),
+    center,
+    center,
+    center,
+    center;
+  background-repeat: repeat, repeat, repeat, repeat, no-repeat, no-repeat, no-repeat, no-repeat;
 }
 
 body {
   overflow: hidden;
+  position: relative;
 }
 
 h1,
@@ -50,6 +89,8 @@ input {
 #app {
   height: 100dvh;
   display: grid;
+  position: relative;
+  z-index: 1;
 }
 
 .view {
@@ -76,7 +117,8 @@ input {
 }
 
 .panel {
-  background: var(--panel);
+  position: relative;
+  background: rgba(255, 255, 255, 0.93);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 28px 24px;
@@ -86,6 +128,26 @@ input {
   gap: 16px;
   overflow: auto;
   min-width: 0;
+  isolation: isolate;
+}
+
+.panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.24;
+  background-image: var(--pattern-tiles);
+  background-size: var(--pattern-size);
+  background-position: var(--pattern-pos);
+  background-repeat: repeat;
+}
+
+.panel > * {
+  position: relative;
+  z-index: 1;
 }
 
 .brand-lockup {
@@ -257,6 +319,27 @@ input:focus {
   border: 2px solid #f0e0cc;
 }
 
+.room-card .btn {
+  padding: 7px 10px;
+  font-size: 0.78rem;
+  border-radius: 10px;
+}
+
+.room-card .btn-xl {
+  padding: 9px 12px;
+  font-size: 0.84rem;
+}
+
+.room-card .chat-form .btn {
+  padding: 5px 9px;
+  font-size: 0.74rem;
+}
+
+.room-card .chat-close {
+  font-size: 1rem;
+  padding: 0 4px;
+}
+
 .room-kicker {
   text-align: center;
   margin: 0;
@@ -354,7 +437,7 @@ input:focus {
   grid-template-columns: 1fr;
   grid-template-rows: 1fr;
   position: relative;
-  background: #efe6d8;
+  background: rgba(239, 230, 216, 0.78);
   --turn-color: #e53935;
 }
 
@@ -364,7 +447,7 @@ input:focus {
   inset: 0;
   pointer-events: none;
   z-index: 4;
-  animation: board-turn-blink 1.1s ease-in-out infinite;
+  animation: board-turn-blink 0.78s ease-in-out infinite;
 }
 
 @keyframes board-turn-blink {
@@ -485,7 +568,7 @@ input:focus {
 }
 
 .roster span.playing {
-  animation: turn-blink 1.1s ease-in-out infinite;
+  animation: turn-blink 0.78s ease-in-out infinite;
 }
 
 @keyframes turn-blink {
@@ -504,6 +587,14 @@ input:focus {
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
+  gap: 12px;
+}
+
+.hud-bottom-bar {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: end;
   gap: 12px;
 }
 
@@ -678,15 +769,26 @@ input:focus {
 
 .chat-drawer {
   position: fixed;
+  top: 0;
   left: 0;
-  right: 0;
   bottom: 0;
+  right: auto;
   z-index: 9200;
-  max-height: min(52vh, 340px);
-  border-radius: 16px 16px 0 0;
+  width: min(320px, 90vw);
+  max-height: 100dvh;
+  height: 100%;
+  border-radius: 0 16px 16px 0;
   pointer-events: auto;
   touch-action: manipulation;
+  padding-top: env(safe-area-inset-top);
   padding-bottom: env(safe-area-inset-bottom);
+  box-sizing: border-box;
+}
+
+.chat-drawer .chat-log {
+  flex: 1;
+  min-height: 0;
+  height: auto;
 }
 
 .chat-drawer[hidden],
@@ -791,7 +893,7 @@ input:focus {
 .dice-wrap.turn-active {
   padding: 5px;
   border-radius: 20px;
-  animation: dice-border-blink 1.1s ease-in-out infinite;
+  animation: dice-border-blink 0.78s ease-in-out infinite;
 }
 
 .dice-wrap.can-roll {
@@ -972,7 +1074,18 @@ input:focus {
   }
 
   #view-game .hud-brand {
-    display: none;
+    display: inline-flex;
+    font-size: 0.72rem;
+    padding: 3px 8px 3px 3px;
+    border-radius: 10px;
+    border-width: 1.5px;
+    gap: 5px;
+    margin-bottom: 4px;
+  }
+
+  #view-game .hud-brand img {
+    width: 22px;
+    height: 22px;
   }
 
   #view-game .hud-top {
@@ -1063,22 +1176,41 @@ input:focus {
   }
 
   #view-game .hud-bottom {
-    gap: 0;
-    align-items: flex-end;
-    justify-content: flex-end;
-    width: 100%;
-    padding-left: 54px;
+    padding: 8px max(8px, env(safe-area-inset-bottom));
     box-sizing: border-box;
     flex-shrink: 0;
   }
 
+  #view-game .hud-bottom-bar {
+    gap: 10px;
+  }
+
   #view-game .hud-left {
-    display: none;
+    display: flex;
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: min(52vw, 240px);
+    justify-content: center;
+  }
+
+  #view-game .log {
+    width: 100%;
+    min-height: 44px;
+    padding: 8px 10px;
+    font-size: 0.78rem;
+    line-height: 1.25;
+    text-align: center;
+    border-radius: 12px;
+    border-width: 1.5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   #view-game .dice-wrap {
-    transform: scale(0.78);
-    transform-origin: bottom right;
+    transform: scale(0.82);
+    transform-origin: center center;
+    flex-shrink: 0;
   }
 
   .chat-fab {
@@ -1087,7 +1219,7 @@ input:focus {
   }
 
   .chat-drawer .chat-log {
-    height: min(28vh, 140px);
+    min-height: 120px;
   }
 
   .chat-drawer .chat-input {
@@ -1115,13 +1247,20 @@ input:focus {
 
 @media (min-width: 641px) {
   .chat-drawer:not([hidden]) {
-    left: auto;
-    right: 16px;
+    top: auto;
+    left: 16px;
     bottom: 72px;
     width: min(320px, 90vw);
-    max-height: 360px;
+    height: auto;
+    max-height: min(360px, 70vh);
     border-radius: 16px;
+    padding-top: 0;
     padding-bottom: 0;
+  }
+
+  .chat-drawer:not([hidden]) .chat-log {
+    height: 112px;
+    flex: none;
   }
 
   .chat-backdrop:not([hidden]) {

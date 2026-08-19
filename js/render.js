@@ -99,7 +99,7 @@
           index,
           player: i,
           isStart: k === 0,
-          isSafe: k === 0,
+          isSafe: false,
           quad,
           center: centroid(quad),
         };
@@ -221,12 +221,11 @@
   }
 
   function turnPulse(time) {
-    return 0.5 + 0.5 * Math.sin((time || 0) / 550);
+    return 0.5 + 0.5 * Math.sin((time || 0) / 400);
   }
 
   function collectBlinkCells(layout, state, highlights) {
     const cells = [];
-    const yards = [];
     const seen = new Set();
     function add(quad, color) {
       if (!quad || !color) return;
@@ -235,43 +234,18 @@
       seen.add(key);
       cells.push({ quad, color });
     }
-    if (!state || state.phase === "ended") return { cells, yards };
-    const cur = state.current;
-    const pl = state.players[cur];
-    if (!pl) return { cells, yards };
-    const yard = layout.yards[cur];
-    if (yard) yards.push({ yard, color: pl.color });
-    const startCell = layout.trackCells[cur * E.SQUARES_PER_PLAYER];
-    if (startCell) add(startCell.quad, pl.color);
+    if (!state || state.phase === "ended") return cells;
     (highlights || []).forEach((h) => {
       const pawn = state.players[h.player].pawns[h.pawnId];
       const color = state.players[h.player].color;
       if (pawn.area === "track") add(layout.trackCells[pawn.index].quad, color);
       else if (pawn.area === "home") add(layout.homePaths[h.player][pawn.index].quad, color);
     });
-    return { cells, yards };
+    return cells;
   }
 
-  function drawBlinkYard(ctx, yard, color, pulse) {
-    const s = yard.size;
-    ctx.save();
-    ctx.translate(yard.x, yard.y);
-    ctx.rotate(yard.angle);
-    ctx.beginPath();
-    ctx.rect(-s / 2, -s / 2, s, s);
-    ctx.fillStyle = color.cssLight || color.cssSoft || color.css;
-    ctx.globalAlpha = 0.14 + pulse * 0.38;
-    ctx.fill();
-    ctx.strokeStyle = color.cssDark || color.css;
-    ctx.lineWidth = 3 + pulse * 6;
-    ctx.globalAlpha = 0.55 + pulse * 0.45;
-    ctx.stroke();
-    ctx.restore();
-  }
-
-  function drawBlinkCells(ctx, cells, yards, time) {
+  function drawBlinkCells(ctx, cells, time) {
     const pulse = turnPulse(time);
-    (yards || []).forEach(({ yard, color }) => drawBlinkYard(ctx, yard, color, pulse));
     cells.forEach(({ quad, color }) => {
       ctx.save();
       ctx.beginPath();
@@ -334,7 +308,7 @@
   }
 
   function pawnRadius(layout, area) {
-    const scale = area === "done" ? 0.24 : area === "yard" ? 0.28 : 0.19;
+    const scale = area === "done" ? 0.30 : area === "yard" ? 0.28 : 0.27;
     return Math.max(4, layout.cs * scale);
   }
 
@@ -444,6 +418,68 @@
     ctx.restore();
   }
 
+  function drawArrow(ctx, x1, y1, x2, y2, color, cs) {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const len = Math.hypot(dx, dy) || 1;
+    const ux = dx / len;
+    const uy = dy / len;
+    const head = cs * 0.36;
+    const wing = cs * 0.22;
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = Math.max(2.2, cs * 0.11);
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - ux * head - uy * wing, y2 - uy * head + ux * wing);
+    ctx.lineTo(x2 - ux * head + uy * wing, y2 - uy * head - ux * wing);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawOffsetStars(ctx, layout) {
+    const S = E.SQUARES_PER_PLAYER;
+    const T = layout.trackCells.length;
+    const cs = layout.cs;
+    for (let i = 0; i < layout.n; i++) {
+      const cell = layout.trackCells[(i * S - 5 + T) % T];
+      if (!cell) continue;
+      drawStar(ctx, cell.center.x, cell.center.y, cs * 0.32);
+    }
+  }
+
+  function drawHouseEntranceArrows(ctx, layout, state, n) {
+    const S = E.SQUARES_PER_PLAYER;
+    const cs = layout.cs;
+    const T = layout.trackCells.length;
+    const scale = cs * 0.42;
+    for (let i = 0; i < layout.n; i++) {
+      const homeCol = layout.homePaths[i];
+      const cell = layout.trackCells[(i * S - 2 + T) % T];
+      if (!homeCol || !homeCol.length || !cell) continue;
+      const color = state && state.players[i] ? state.players[i].color.css : E.hslColor(i, n).css;
+      const hx = homeCol[0].center.x;
+      const hy = homeCol[0].center.y;
+      const cx = cell.center.x;
+      const cy = cell.center.y;
+      const dx = hx - cx;
+      const dy = hy - cy;
+      const len = Math.hypot(dx, dy) || 1;
+      const ux = dx / len;
+      const uy = dy / len;
+      const half = cs * 0.16;
+      drawArrow(ctx, cx - ux * half, cy - uy * half, cx + ux * half, cy + uy * half, color, scale);
+    }
+  }
+
   function drawBoard(ctx, layout, state, opts) {
     opts = opts || {};
     const { width, height, highlights, hoverPawn, anim, time } = opts;
@@ -501,8 +537,7 @@
         ctx.textBaseline = "middle";
         ctx.shadowColor = "rgba(0,0,0,0.35)";
         ctx.shadowBlur = 3;
-        ctx.translate(-s / 2 + inset * 0.55, 0);
-        ctx.rotate(-Math.PI / 2);
+        ctx.translate(0, -s / 2 + inset * 0.55);
         ctx.fillText(state.players[pi].name, 0, 0, s - inset * 2.2);
         ctx.restore();
       }
@@ -526,15 +561,16 @@
       let fill = "#ffffff";
       if (cell.isStart) fill = owner.color.css;
       fillQuad(ctx, cell.quad, fill, STROKE);
-      if (cell.isSafe) {
-        drawStar(ctx, cell.center.x, cell.center.y, layout.cs * 0.32);
-      }
     });
+
+    drawOffsetStars(ctx, layout);
 
     layout.homePaths.forEach((path, pi) => {
       const color = state && state.players[pi] ? state.players[pi].color : E.hslColor(pi, n);
       path.forEach((cell) => fillQuad(ctx, cell.quad, color.css, STROKE));
     });
+
+    drawHouseEntranceArrows(ctx, layout, state, n);
 
     layout.centerTris.forEach((tri) => {
       const color = state && state.players[tri.player]
@@ -552,10 +588,8 @@
       ctx.stroke();
     });
 
-    const blinkTargets = collectBlinkCells(layout, state, highlights);
-    if (blinkTargets.cells.length || blinkTargets.yards.length) {
-      drawBlinkCells(ctx, blinkTargets.cells, blinkTargets.yards, time);
-    }
+    const blinkCells = collectBlinkCells(layout, state, highlights);
+    if (blinkCells.length) drawBlinkCells(ctx, blinkCells, time);
 
     const hits = [];
     if (state) {
@@ -568,15 +602,15 @@
           const glow = movable.has(key);
           const dim = state.phase === "ended" && pl.rank !== 1;
           const bounce = glow
-            ? (0.55 + 0.45 * Math.abs(Math.sin(t / 160 + pawn.id * 0.85))) * layout.cs * 0.2
+            ? (0.55 + 0.45 * Math.abs(Math.sin(t / 115 + pawn.id * 0.85))) * layout.cs * 0.2
             : 0;
           let size;
           if (pawn.area === "yard") {
-            size = layout.yards[pi].slots[pawn.id].r * 0.88;
+            size = layout.yards[pi].slots[pawn.id].r * 0.62;
           } else {
             size = pawnRadius(layout, pawn.area);
             if (glow && (pawn.area === "track" || pawn.area === "home")) {
-              size = Math.min(layout.cs * 0.24, size * 1.2);
+              size = Math.min(layout.cs * 0.32, size * 1.2);
             }
           }
           drawPawn(ctx, pos.x, pos.y, size, pl.color, bounce, dim);
@@ -584,8 +618,12 @@
             player: pi,
             pawnId: pawn.id,
             x: pos.x,
-            y: pos.y - size * 1.1 - bounce * 0.5,
-            r: size * 1.7 + layout.cs * 0.12,
+            y: pos.y - size * 0.9,
+            r: size * 2.1,
+            shadowX: pos.x,
+            shadowY: pos.y + 1,
+            shadowRx: size * 0.62,
+            shadowRy: size * 0.2,
           });
         });
       });
@@ -595,7 +633,15 @@
       const hit = hits.find((h) => h.player === hoverPawn.player && h.pawnId === hoverPawn.pawnId);
       if (hit) {
         ctx.beginPath();
-        ctx.arc(hit.x, hit.y, hit.r + 2, 0, Math.PI * 2);
+        ctx.ellipse(
+          hit.shadowX,
+          hit.shadowY,
+          hit.shadowRx + 3,
+          hit.shadowRy + 2,
+          0,
+          0,
+          Math.PI * 2
+        );
         ctx.strokeStyle = "#111";
         ctx.lineWidth = 2;
         ctx.stroke();
@@ -638,11 +684,15 @@
     }
     if (from.area === "track" && (dest.area === "home" || dest.area === "done")) {
       const T = layout.trackCells.length;
-      const lastTrack = (E.startIndex(player) - 1 + T) % T;
+      const start = E.startIndex(player);
+      const kMinus1 = (start - 1 + T) % T;
+      const kMinus2 = (start - 2 + T) % T;
       let i = from.index;
-      while (i !== lastTrack) {
-        i = (i + 1) % T;
-        pts.push(layout.trackCells[i].center);
+      if (i !== kMinus1) {
+        while (i !== kMinus2) {
+          i = (i + 1) % T;
+          pts.push(layout.trackCells[i].center);
+        }
       }
       const homeEnd = dest.area === "done" ? E.HOME_LEN : dest.index + 1;
       for (let h = 0; h < homeEnd; h++) {
