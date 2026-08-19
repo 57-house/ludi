@@ -104,11 +104,20 @@
     );
   }
 
+  function maxTrackSteps(n) {
+    return trackLen(n) - 2;
+  }
+
+  function portalTrackIndex(playerIndex, n) {
+    const T = trackLen(n);
+    return (startIndex(playerIndex) - 2 + T) % T;
+  }
+
   function pathBlocked(state, playerIndex, fromSteps, toSteps) {
     const T = trackLen(state.n);
     const start = startIndex(playerIndex);
-    for (let s = fromSteps + 1; s < toSteps; s++) {
-      if (s >= T - 1) break;
+    const maxTrack = maxTrackSteps(state.n);
+    for (let s = fromSteps + 1; s < toSteps && s <= maxTrack; s++) {
       const idx = (start + s) % T;
       if (isBlockade(state, "track", idx, playerIndex)) return true;
     }
@@ -118,7 +127,7 @@
   function destination(state, playerIndex, pawn, dice) {
     const T = trackLen(state.n);
     const start = startIndex(playerIndex);
-    const maxTrack = T - 1;
+    const maxTrack = maxTrackSteps(state.n);
 
     if (pawn.area === "done") return null;
     if (pawn.area === "yard") {
@@ -128,12 +137,8 @@
 
     if (pawn.area === "track") {
       const newSteps = pawn.steps + dice;
-      if (newSteps < maxTrack) {
+      if (newSteps <= maxTrack) {
         const idx = (start + newSteps) % T;
-        return { area: "track", index: idx, steps: newSteps };
-      }
-      if (newSteps === maxTrack) {
-        const idx = (start + maxTrack) % T;
         return { area: "track", index: idx, steps: newSteps };
       }
       const homeIdx = newSteps - maxTrack - 1;
@@ -372,6 +377,8 @@
     botChoose,
     isSafeSquare,
     startIndex,
+    maxTrackSteps,
+    portalTrackIndex,
     clone,
     nextActive,
   };

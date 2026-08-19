@@ -684,15 +684,11 @@
     }
     if (from.area === "track" && (dest.area === "home" || dest.area === "done")) {
       const T = layout.trackCells.length;
-      const start = E.startIndex(player);
-      const kMinus1 = (start - 1 + T) % T;
-      const kMinus2 = (start - 2 + T) % T;
+      const portal = E.portalTrackIndex(player, layout.n);
       let i = from.index;
-      if (i !== kMinus1) {
-        while (i !== kMinus2) {
-          i = (i + 1) % T;
-          pts.push(layout.trackCells[i].center);
-        }
+      while (i !== portal) {
+        i = (i + 1) % T;
+        pts.push(layout.trackCells[i].center);
       }
       const homeEnd = dest.area === "done" ? E.HOME_LEN : dest.index + 1;
       for (let h = 0; h < homeEnd; h++) {

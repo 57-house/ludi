@@ -309,6 +309,19 @@ input:focus {
   flex: 1;
 }
 
+.room-url {
+  display: block;
+  color: #0d47a1;
+  font-weight: 800;
+  word-break: break-all;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.room-url:hover {
+  color: #1565c0;
+}
+
 .room-card {
   display: flex;
   flex-direction: column;

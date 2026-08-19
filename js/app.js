@@ -98,6 +98,7 @@
     hover: null,
     anim: null,
     busy: false,
+    turnReveal: null,
     net: null,
     myId: null,
     room: null,
@@ -113,6 +114,45 @@
 
   function sleep(ms) {
     return new Promise((r) => setTimeout(r, ms));
+  }
+
+  const TURN_REVEAL_MS = 1400;
+
+  function turnRevealActive() {
+    return session.turnReveal && performance.now() < session.turnReveal.until;
+  }
+
+  function clearTurnRevealIfExpired() {
+    if (session.turnReveal && performance.now() >= session.turnReveal.until) {
+      session.turnReveal = null;
+    }
+  }
+
+  function uiTurnIndex(g) {
+    clearTurnRevealIfExpired();
+    if (session.turnReveal) return session.turnReveal.playerIndex;
+    return g.current;
+  }
+
+  function shouldRevealTurn(action) {
+    if (!action || !session.game) return false;
+    const g = session.game;
+    if (g.phase === "ended") return false;
+    if (action.extraTurn) return false;
+    if (action.type === "move") {
+      return g.phase === "waiting" && action.player !== g.current;
+    }
+    if (action.type === "bust" || action.type === "timeout") return true;
+    if (action.type === "skip") return true;
+    return false;
+  }
+
+  function startTurnReveal(action) {
+    session.turnReveal = {
+      playerIndex: action.player,
+      dice: action.dice,
+      until: performance.now() + TURN_REVEAL_MS,
+    };
   }
 
   function fitCanvas(canvas) {
@@ -327,17 +367,20 @@
   function updateHud() {
     const g = session.game;
     if (!g) return;
-    const pl = g.players[g.current];
+    const revealing = turnRevealActive();
+    const uiIdx = uiTurnIndex(g);
+    const pl = g.players[uiIdx];
     els.turnName.textContent = pl ? pl.name : "—";
     els.turnName.style.color = pl ? pl.color.cssDark || pl.color.css : "";
     if (g.phase === "ended") els.turnHelp.textContent = "Partie terminée";
+    else if (revealing) els.turnHelp.textContent = "Fin du tour…";
     else if (g.phase === "rolled") els.turnHelp.textContent = (currentIsMe() ? "Cliquez un pion allumé" : "L’adversaire choisit un pion") + turnClock();
     else els.turnHelp.textContent = (currentIsMe() ? "Cliquez le dé pour jouer" : "En attente du joueur…") + turnClock();
 
     els.roster.innerHTML = "";
     g.players.forEach((p, i) => {
       const span = document.createElement("span");
-      if (i === g.current && g.phase !== "ended") {
+      if (i === uiIdx && g.phase !== "ended") {
         span.classList.add("current", "playing");
         span.style.setProperty("--player-color", p.color.css);
       }
@@ -353,9 +396,10 @@
       els.roster.appendChild(span);
     });
 
-    const canRoll = g.phase === "waiting" && currentIsMe() && !session.busy && g.phase !== "ended";
+    const canRoll =
+      !revealing && g.phase === "waiting" && currentIsMe() && !session.busy && g.phase !== "ended";
     const isPlaying = pl && g.phase !== "ended";
-    els.diceWrap.classList.toggle("turn-active", g.phase === "waiting");
+    els.diceWrap.classList.toggle("turn-active", !revealing && g.phase === "waiting");
     els.diceWrap.classList.toggle("can-roll", canRoll);
     if (isPlaying) {
       els.diceWrap.style.setProperty("--turn-color", pl.color.css);
@@ -370,6 +414,8 @@
       els.diceWrap.style.removeProperty("--dice-border");
       els.diceWrap.style.removeProperty("--dice-pip");
     }
+    if (revealing && session.turnReveal.dice) setDice(session.turnReveal.dice, false);
+    else if (g.phase === "rolled" && g.diceValue) setDice(g.diceValue, false);
     els.dice.setAttribute("aria-disabled", canRoll ? "false" : "true");
     els.dice.tabIndex = canRoll ? 0 : -1;
 
@@ -512,53 +558,69 @@
   }
 
   async function handleResult(res, rolledNow) {
-    if (!res || !res.ok) {
-      if (res && res.error) log(res.error);
-      return;
-    }
-    const action = session.game.lastAction;
-    if (rolledNow && action && action.dice) {
-      if (S) S.playDiceRoll();
-      setDice(action.dice, true);
-      await sleep(300);
-    }
-    if (action && action.type === "move") {
-      await animateMove(action);
-      if (action.captured && action.captured.length) {
-        const eater = session.game.players[action.player];
-        const victims = action.captured
-          .map((c) => session.game.players[c.player] && session.game.players[c.player].name)
-          .filter(Boolean);
-        log(
-          (eater ? eater.name : "Un pion") +
-            " a bouffé " +
-            (victims.length ? victims.join(", ") : "un pion") +
-            " ! Retour à la maison." +
-            (action.extraTurn ? " Relancez." : "")
-        );
-      } else if (action.justFinished) {
-        log(session.game.players[action.player].name + " a ramené tous ses pions.");
-      } else if (action.extraTurn) {
-        log("6 ! Relancez le dé.");
+    session.busy = true;
+    try {
+      if (!res || !res.ok) {
+        if (res && res.error) log(res.error);
+        return;
       }
-    } else if (action && action.message) {
-      log(action.message);
-    } else if (action && action.type === "roll") {
-      log("Un " + action.dice + " — cliquez un pion allumé.");
-    }
+      const action = session.game.lastAction;
+      if (rolledNow && action && action.dice) {
+        if (S) S.playDiceRoll();
+        setDice(action.dice, true);
+        await sleep(300);
+      }
+      if (action && action.type === "move") {
+        await animateMove(action);
+        if (action.captured && action.captured.length) {
+          const eater = session.game.players[action.player];
+          const victims = action.captured
+            .map((c) => session.game.players[c.player] && session.game.players[c.player].name)
+            .filter(Boolean);
+          log(
+            (eater ? eater.name : "Un pion") +
+              " a bouffé " +
+              (victims.length ? victims.join(", ") : "un pion") +
+              " ! Retour à la maison." +
+              (action.extraTurn ? " Relancez." : "")
+          );
+        } else if (action.justFinished) {
+          log(session.game.players[action.player].name + " a ramené tous ses pions.");
+        } else if (action.extraTurn) {
+          log("6 ! Relancez le dé.");
+        }
+      } else if (action && action.message) {
+        log(action.message);
+      } else if (action && action.type === "roll") {
+        log("Un " + action.dice + " — cliquez un pion allumé.");
+      }
 
-    session.highlights = [];
-    if (session.game.phase === "rolled") {
-      const moves = E.legalMoves(session.game, session.game.current, session.game.diceValue);
-      session.highlights = moves.map((m) => ({
-        player: session.game.current,
-        pawnId: m.pawnId,
-      }));
-    }
-    drawGame();
-    updateHud();
+      session.highlights = [];
+      if (session.game.phase === "rolled") {
+        const moves = E.legalMoves(session.game, session.game.current, session.game.diceValue);
+        session.highlights = moves.map((m) => ({
+          player: session.game.current,
+          pawnId: m.pawnId,
+        }));
+      }
 
-    if (session.game.phase === "ended") showWin();
+      if (shouldRevealTurn(action)) {
+        startTurnReveal(action);
+        drawGame();
+        updateHud();
+        await sleep(TURN_REVEAL_MS);
+        session.turnReveal = null;
+      }
+
+      drawGame();
+      updateHud();
+
+      if (session.game.phase === "ended") showWin();
+    } finally {
+      session.busy = false;
+      drawGame();
+      updateHud();
+    }
   }
 
   function doRoll() {
@@ -638,6 +700,44 @@
     }
   }
 
+  function roomJoinUrl(code) {
+    const url = new URL(location.href);
+    url.search = "";
+    url.hash = "";
+    const base = appBase();
+    url.pathname = ((base ? base : "") + "/").replace(/\/{2,}/g, "/");
+    url.searchParams.set("salle", code);
+    return url.toString();
+  }
+
+  let pendingJoinCode = null;
+
+  function joinRoomByCode(code) {
+    code = String(code || "")
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, "")
+      .slice(0, 6);
+    if (!code) {
+      els.onlineStatus.textContent = "Entrez le code de la table.";
+      return;
+    }
+    const saved = loadSaved();
+    const name = (els.onlineName.value.trim() || saved.name || "Joueur").slice(0, 18);
+    if (!els.onlineName.value.trim()) els.onlineName.value = name;
+    els.joinCode.value = code;
+    saveSession({ name, code });
+    history.replaceState(null, "", roomJoinUrl(code));
+    els.onlineStatus.textContent = "Entrée dans la table " + code + "…";
+    const net = connectNet();
+    if (!net) return;
+    sendWhenReady(net, {
+      type: "join",
+      name,
+      code,
+      playerId: saved.code === code ? saved.playerId : undefined,
+    });
+  }
+
   function connectNet() {
     if (location.protocol === "file:") {
       els.onlineStatus.textContent = "Ouvrez le jeu via npm start pour jouer en ligne.";
@@ -676,7 +776,11 @@
     socket.on("connect", () => {
       const saved = loadSaved();
       if (saved.name && !els.onlineName.value) els.onlineName.value = saved.name;
-      if (saved.code && saved.playerId) {
+      if (pendingJoinCode) {
+        const code = pendingJoinCode;
+        pendingJoinCode = null;
+        joinRoomByCode(code);
+      } else if (saved.code && saved.playerId) {
         els.onlineStatus.textContent = "Reconnexion à la table…";
         els.joinCode.value = saved.code;
         net.send({
@@ -767,7 +871,7 @@
       if (!els.game.classList.contains("active")) setView("game");
       const action = session.game.lastAction;
       if (msg.type === "state") {
-        handleResult({ ok: true }, !!(action && action.dice && action.type !== "move"));
+        await handleResult({ ok: true }, !!(action && action.dice && action.type !== "move"));
       } else {
         session.highlights = [];
         log("Tout le monde est installé. Que la partie commence.");
@@ -781,7 +885,9 @@
     if (!room) return;
     els.roomInfo.hidden = false;
     els.roomCode.textContent = room.code;
-    els.roomUrl.textContent = location.origin + "/?salle=" + room.code;
+    const url = roomJoinUrl(room.code);
+    els.roomUrl.href = url;
+    els.roomUrl.textContent = url;
     els.onlinePlayers.innerHTML = "";
     room.players.forEach((p, i) => {
       const color = p.color || E.hslColor(i, room.players.length);
@@ -872,17 +978,8 @@
     sendWhenReady(net, { type: "create", name });
   });
   document.getElementById("btn-join").addEventListener("click", () => {
-    const net = connectNet();
-    if (!net) return;
-    const name = els.onlineName.value.trim() || "Invité";
-    const code = els.joinCode.value.trim().toUpperCase();
-    if (!code) {
-      els.onlineStatus.textContent = "Entrez le code de la table.";
-      return;
-    }
-    const saved = loadSaved();
-    saveSession({ name, code });
-    sendWhenReady(net, { type: "join", name, code, playerId: saved.playerId });
+    if (!connectNet()) return;
+    joinRoomByCode(els.joinCode.value.trim());
   });
   els.joinCode.addEventListener("input", () => {
     els.joinCode.value = els.joinCode.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -944,7 +1041,7 @@
   }
 
   els.btnCopy.addEventListener("click", async () => {
-    const url = els.roomUrl.textContent;
+    const url = els.roomUrl.href || els.roomUrl.textContent;
     try {
       await navigator.clipboard.writeText(url);
       els.btnCopy.textContent = "Lien copié";
@@ -961,12 +1058,33 @@
     if (els.game.classList.contains("active")) drawGame();
   });
 
+  if (els.roomUrl) {
+    els.roomUrl.addEventListener("click", (e) => {
+      const code =
+        new URL(els.roomUrl.href, location.href).searchParams.get("salle") ||
+        els.roomCode.textContent;
+      if (session.room && session.room.code === code) {
+        e.preventDefault();
+        return;
+      }
+      e.preventDefault();
+      joinRoomByCode(code);
+    });
+  }
+
   const params = new URLSearchParams(location.search);
   const saved = loadSaved();
   if (saved.name) els.onlineName.value = saved.name;
   const salle = params.get("salle");
-  if (salle) els.joinCode.value = salle.toUpperCase();
-  else if (saved.code) els.joinCode.value = saved.code;
+  if (salle) {
+    const code = salle.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+    if (code) {
+      els.joinCode.value = code;
+      pendingJoinCode = code;
+    }
+  } else if (saved.code) {
+    els.joinCode.value = saved.code;
+  }
 
   function unlockAudio() {
     if (S) S.unlock();

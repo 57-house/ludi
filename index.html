@@ -44,7 +44,7 @@
               <div id="room-info" class="room-card" hidden>
                 <p class="tiny room-kicker">Code de la table</p>
                 <div class="code" id="room-code"></div>
-                <p class="tiny" id="room-url"></p>
+                <a class="tiny room-url" id="room-url" href="#"></a>
                 <button class="btn btn-ghost" id="btn-copy" type="button">Copier le lien</button>
                 <div class="players" id="online-players"></div>
                 <p class="hint" id="online-hint">En attente de joueurs… le plateau s’élargit à chaque entrée.</p>
@@ -84,21 +84,25 @@
         <div class="hud">
           <div class="hud-top">
             <div class="hud-top-left">
-              <div class="hud-brand" aria-label="LUDI">
-                <img src="img/ludi-logo.svg" width="28" height="28" alt="" />
-                <span>LUDI</span>
+              <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                <div class="hud-brand" aria-label="LUDI">
+                  <img src="img/ludi-logo.svg" width="28" height="28" alt="" />
+                  <span>LUDI</span>
+                  
+                </div>
+                <div class="row hud-btns">
+                  <button class="btn btn-ghost btn-compact" id="btn-rules" type="button" title="Règles">?</button>
+                  <button class="btn btn-danger btn-compact" id="btn-quit" type="button">Quit</button>
+                </div>
               </div>
-            <div class="turn-banner" id="turn-banner">
-              <span class="tiny">Tour en cours</span>
-              <strong id="turn-name">—</strong>
-              <span class="tiny" id="turn-help">Cliquez le dé</span>
-            </div>
+              <div class="roster" id="roster"></div>
             </div>
             <div class="hud-actions">
-              <div class="roster" id="roster"></div>
-              <div class="row hud-btns">
-                <button class="btn btn-ghost btn-compact" id="btn-rules" type="button" title="Règles">?</button>
-                <button class="btn btn-danger btn-compact" id="btn-quit" type="button">Quit</button>
+              
+              <div class="turn-banner" id="turn-banner">
+                <span class="tiny">Tour en cours</span>
+                <strong id="turn-name">—</strong>
+                <span class="tiny" id="turn-help">Cliquez le dé</span>
               </div>
             </div>
           </div>
